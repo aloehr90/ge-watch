@@ -1,10 +1,9 @@
-# Put this file in your repo at:  .github/workflows/check.yml
 name: Check Global Entry appointments
 
 on:
   schedule:
-    - cron: "5 * * * *"    # every hour at 5 past (times are UTC)
-  workflow_dispatch:         # adds a "Run workflow" button for manual runs
+    - cron: "2-59/5 * * * *"  # every 5 minutes (GitHub may run these late)
+  workflow_dispatch:           # adds a "Run workflow" button for manual runs
     inputs:
       test:
         description: "Send a test notification"
@@ -12,11 +11,16 @@ on:
         default: false
 
 permissions:
-  contents: write            # lets the job save state.json back to the repo
+  contents: write              # lets the job save state.json back to the repo
+
+concurrency:
+  group: ge-watch              # one check at a time, so state.json never races
+  cancel-in-progress: false
 
 jobs:
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
 
@@ -25,13 +29,26 @@ jobs:
         env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
           TEST_MODE: ${{ inputs.test || 'false' }}
+          # Optional overrides: Settings > Secrets and variables > Actions > Variables
+          LOCATION_ID: ${{ vars.LOCATION_ID }}
+          LOCATION_NAME: ${{ vars.LOCATION_NAME }}
+          BEFORE_DATE: ${{ vars.BEFORE_DATE }}
+          NTFY_SERVER: ${{ vars.NTFY_SERVER }}
 
       - name: Save state
+        if: ${{ !cancelled() }}  # also runs after a failed check, to record the failure
         run: |
-          if [ -n "$(git status --porcelain state.json)" ]; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898308+github-actions[bot]@users.noreply.github.com"
-            git add state.json
-            git commit -m "Update appointment state"
-            git push
+          if [ -z "$(git status --porcelain state.json)" ]; then
+            exit 0
           fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898308+github-actions[bot]@users.noreply.github.com"
+          git add state.json
+          git commit -m "Update appointment state"
+          for attempt in 1 2 3; do
+            if git pull --rebase && git push; then
+              exit 0
+            fi
+            sleep 5
+          done
+          exit 1
