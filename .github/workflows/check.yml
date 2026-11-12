@@ -2,7 +2,9 @@ name: Check Global Entry appointments
 
 on:
   schedule:
-    - cron: "2-59/5 * * * *"  # every 5 minutes (GitHub may run these late)
+    # Every 5 minutes, 11 AM-9 PM Mountain time. Cron is in UTC and ignores
+    # daylight saving, so this covers both offsets and the first step trims it.
+    - cron: "2-59/5 0-3,17-23 * * *"
   workflow_dispatch:           # adds a "Run workflow" button for manual runs
     inputs:
       test:
@@ -22,9 +24,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - name: Skip scheduled runs outside watch hours
+        id: hours
+        if: github.event_name == 'schedule'
+        run: |
+          hour=$((10#$(TZ=America/Denver date +%H)))
+          if [ "$hour" -lt 11 ] || [ "$hour" -ge 21 ]; then
+            echo "Outside 11 AM-9 PM Mountain time; skipping."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/checkout@v4
+        if: steps.hours.outputs.skip != 'true'
 
       - name: Check for openings
+        if: steps.hours.outputs.skip != 'true'
         run: python3 check.py
         env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
@@ -36,7 +50,8 @@ jobs:
           NTFY_SERVER: ${{ vars.NTFY_SERVER }}
 
       - name: Save state
-        if: ${{ !cancelled() }}  # also runs after a failed check, to record the failure
+        # also runs after a failed check, to record the failure
+        if: ${{ !cancelled() && steps.hours.outputs.skip != 'true' }}
         run: |
           if [ -z "$(git status --porcelain state.json)" ]; then
             exit 0

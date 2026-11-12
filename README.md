@@ -3,7 +3,9 @@
 Watches a Global Entry enrollment center (Boise by default) for open interview
 slots and sends a push notification to your phone when a new one appears.
 
-It runs on GitHub Actions every 5 minutes, so there is nothing to host.
+It runs on GitHub Actions every 5 minutes between 11 AM and 9 PM Mountain
+time, so there is nothing to host. Manual runs work at any hour. To change the
+hours, edit the schedule and the first step in `.github/workflows/check.yml`.
 
 ## Setup
 
