@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Global Entry watch</title>
+<style>
+  :root {
+    color-scheme: light;
+    --page: #f9f9f7; --surface: #fcfcfb; --border: rgba(11,11,11,0.10);
+    --text: #0b0b0b; --text-2: #52514e; --muted: #898781;
+    --grid: #e1e0d9; --axis: #c3c2b7; --series: #2a78d6; --unwatched: #f0efec;
+    --good: #0ca30c; --warning: #fab219; --critical: #d03b3b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --page: #0d0d0d; --surface: #1a1a19; --border: rgba(255,255,255,0.10);
+      --text: #f0efec; --text-2: #c3c2b7; --muted: #898781;
+      --grid: #2c2c2a; --axis: #383835; --series: #3987e5; --unwatched: #232322;
+    }
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; background: var(--page); color: var(--text);
+         font: 16px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 920px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 20px; margin: 0; }
+  h2 { font-size: 16px; margin: 0 0 2px; }
+  .sub { color: var(--text-2); font-size: 14px; margin: 0; }
+  header { display: flex; justify-content: space-between; align-items: baseline;
+           gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+  .card { background: var(--surface); border: 1px solid var(--border);
+          border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+  .hero-value { font-size: 32px; font-weight: 600; line-height: 1.2; margin: 0 0 4px; }
+  .slots { list-style: none; padding: 0; margin: 12px 0 0; display: flex; flex-wrap: wrap; gap: 8px; }
+  .slots li { border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; font-size: 15px; }
+  .button { display: inline-block; margin-top: 16px; padding: 10px 16px; border-radius: 8px;
+            background: var(--series); color: #fff; text-decoration: none; font-weight: 600; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 16px; margin-bottom: 16px; }
+  .tile { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+  .tile .label { color: var(--text-2); font-size: 13px; }
+  .tile .value { font-size: 22px; font-weight: 600; margin-top: 2px; }
+  .tile .note { color: var(--text-2); font-size: 13px; margin-top: 2px; }
+  .status { display: flex; align-items: center; gap: 8px; }
+  .status svg { flex: none; }
+  .charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+  .charts .card { margin-bottom: 0; min-width: 0; }
+  .chart { margin-top: 12px; position: relative; }
+  .chart svg { display: block; width: 100%; }
+  .chart text { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .empty { color: var(--text-2); font-size: 14px; padding: 28px 0; text-align: center; }
+  .key { color: var(--text-2); font-size: 12px; margin-top: 8px; display: flex; align-items: center; gap: 6px; }
+  .key i { width: 12px; height: 12px; border-radius: 2px; background: var(--unwatched); border: 1px solid var(--border); }
+  .table-wrap { overflow-x: auto; margin-top: 12px; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th { text-align: left; color: var(--text-2); font-weight: 500; }
+  th, td { padding: 8px 12px 8px 0; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+  td { font-variant-numeric: tabular-nums; }
+  #tip { position: fixed; pointer-events: none; background: var(--text); color: var(--page);
+         font-size: 13px; padding: 6px 8px; border-radius: 6px; display: none; z-index: 10; white-space: nowrap; }
+  footer { color: var(--text-2); font-size: 13px; margin-top: 24px; }
+  a { color: inherit; }
+  section { margin-top: 16px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1 id="title">Global Entry watch</h1>
+    <p class="sub" id="updated">Loading…</p>
+  </header>
+
+  <div class="card" id="hero">
+    <p class="sub" id="hero-label">Open appointments</p>
+    <p class="hero-value" id="hero-value">…</p>
+    <p class="sub" id="hero-note"></p>
+    <ul class="slots" id="hero-slots"></ul>
+    <a class="button" id="book" href="https://ttp.cbp.dhs.gov/" hidden>Book on the Trusted Traveler site</a>
+  </div>
+
+  <div class="tiles">
+    <div class="tile"><div class="label">Watcher</div>
+      <div class="value status" id="health">…</div><div class="note" id="health-note"></div></div>
+    <div class="tile"><div class="label">Openings seen</div>
+      <div class="value" id="seen">…</div><div class="note" id="seen-note"></div></div>
+    <div class="tile"><div class="label">Typical time before a slot is taken</div>
+      <div class="value" id="lasted">…</div><div class="note" id="lasted-note"></div></div>
+  </div>
+
+  <div class="charts">
+    <div class="card"><h2>When openings appear, by hour</h2>
+      <p class="sub" id="hour-sub">Slots first seen in each hour</p>
+      <div class="chart" id="by-hour"></div>
+      <div class="key" id="hour-key" hidden><i></i><span id="hour-key-text"></span></div></div>
+    <div class="card"><h2>When openings appear, by day</h2>
+      <p class="sub">Slots first seen on each day of the week</p>
+      <div class="chart" id="by-day"></div></div>
+  </div>
+
+  <section class="card">
+    <h2>Recent openings</h2>
+    <p class="sub">Newest first. Times are local to the enrollment center.</p>
+    <div class="table-wrap" id="recent"></div>
+  </section>
+
+  <footer>
+    <span id="foot"></span>
+    <a id="repo-link" href="#">Source and settings on GitHub</a> ·
+    <a id="runs-link" href="#">Run history</a>
+  </footer>
+</main>
+<div id="tip" role="status"></div>
+
+<script>
+// Repository that holds the data. On GitHub Pages this is read from the address
+// (https://OWNER.github.io/REPO/); the fallback is used when previewing locally.
+let OWNER = "aloehr90", REPO = "ge-watch", BRANCH = "main";
+const pages = location.hostname.match(/^(.+)\.github\.io$/);
+if (pages) { OWNER = pages[1]; REPO = location.pathname.split("/")[1] || REPO; }
+const DATA = pages ? `https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}/` : "../";
+const RUNS = `https://api.github.com/repos/${OWNER}/${REPO}/actions/runs?per_page=5`;
+const REPO_URL = `https://github.com/${OWNER}/${REPO}`;
+const STALE_MINUTES = 30;   // a watcher that hasn't run for this long is flagged
+const REFRESH_MINUTES = 5;
+
+const $ = id => document.getElementById(id);
+const SVG = "http://www.w3.org/2000/svg";
+const el = (name, attrs = {}, text) => {
+  const node = document.createElementNS(SVG, name);
+  for (const k in attrs) node.setAttribute(k, attrs[k]);
+  if (text != null) node.textContent = text;
+  return node;
+};
+
+// ---- time helpers -----------------------------------------------------------
+let TZ = "America/Denver";
+// Parts of an instant, expressed in the enrollment center's time zone.
+function localParts(date) {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: TZ, hourCycle: "h23",
+    weekday: "short", year: "numeric", month: "numeric", day: "numeric", hour: "numeric" })
+    .formatToParts(date).reduce((o, p) => (o[p.type] = p.value, o), {});
+  return { hour: +parts.hour, weekday: parts.weekday,
+           dayNumber: Date.UTC(+parts.year, +parts.month - 1, +parts.day) / 864e5 };
+}
+const fmtFound = date => new Intl.DateTimeFormat("en-US", { timeZone: TZ, weekday: "short",
+  month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(date);
+// Slot times arrive as the center's wall-clock time ("2026-12-24T07:50").
+function fmtSlot(slot) {
+  const [y, mo, d, h, mi] = slot.split(/[-T:]/).map(Number);
+  return new Intl.DateTimeFormat("en-US", { timeZone: "UTC", weekday: "short", month: "short",
+    day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(Date.UTC(y, mo - 1, d, h, mi)));
+}
+const slotDayNumber = slot => { const [y, mo, d] = slot.split(/[-T]/).map(Number); return Date.UTC(y, mo - 1, d) / 864e5; };
+const hourLabel = h => `${h % 12 || 12} ${h < 12 ? "AM" : "PM"}`;
+function duration(ms) {
+  const min = Math.round(ms / 6e4);
+  if (min < 60) return `${Math.max(min, 1)} min`;
+  if (min < 48 * 60) return `${Math.round(min / 6) / 10} hr`;
+  return `${Math.round(min / 144) / 10} days`;
+}
+const ago = date => `${duration(Date.now() - date)} ago`;
+const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+// ---- data ---------------------------------------------------------------------
+async function getText(url) {
+  const r = await fetch(url, { cache: "no-store" });
+  if (!r.ok) throw new Error(`${r.status} for ${url}`);
+  return r.text();
+}
+async function load() {
+  const [state, history, runs] = await Promise.all([
+    getText(DATA + "state.json").then(JSON.parse),
+    getText(DATA + "history.jsonl").then(t => t.split("\n").filter(Boolean).map(JSON.parse)).catch(() => []),
+    getText(RUNS).then(JSON.parse).then(j => j.workflow_runs || []).catch(() => null),
+  ]);
+  return { state, history, runs };
+}
+
+// Pair each "opened" event with the "closed" event that follows it for the same slot.
+function openings(history) {
+  const list = [], live = {};
+  for (const e of history) {
+    if (e.event === "opened") {
+      live[e.slot] = { slot: e.slot, found: new Date(e.at), closed: null };
+      list.push(live[e.slot]);
+    } else if (e.event === "closed" && live[e.slot]) {
+      live[e.slot].closed = new Date(e.at);
+      delete live[e.slot];
+    }
+  }
+  return list;
+}
+
+// ---- rendering ----------------------------------------------------------------
+const ICONS = {
+  good: '<circle cx="9" cy="9" r="9" fill="var(--good)"/><path d="M5 9.5l2.7 2.7L13 6.8" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',
+  warning: '<path d="M9 1l8.5 15.5h-17z" fill="var(--warning)"/><path d="M9 6.5v5" stroke="#0b0b0b" stroke-width="2" stroke-linecap="round"/><circle cx="9" cy="14" r="1.1" fill="#0b0b0b"/>',
+  critical: '<circle cx="9" cy="9" r="9" fill="var(--critical)"/><path d="M6 6l6 6M12 6l-6 6" stroke="#fff" stroke-width="2" stroke-linecap="round"/>',
+  paused: '<circle cx="9" cy="9" r="9" fill="var(--muted)"/><path d="M7 5.5v7M11 5.5v7" stroke="#fff" stroke-width="2" stroke-linecap="round"/>',
+};
+function setHealth(kind, label, note) {
+  $("health").innerHTML = `<svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">${ICONS[kind]}</svg><span></span>`;
+  $("health").lastChild.textContent = label;
+  $("health-note").textContent = note;
+}
+
+function renderHealth(state, runs) {
+  const hours = state.watch_hours;
+  const hoursText = hours ? `Checks run ${hourLabel(hours[0])}–${hourLabel(hours[1])}.` : "";
+  const hourNow = localParts(new Date()).hour;
+  const watching = !hours || (hourNow >= hours[0] && hourNow < hours[1]);
+  const last = runs && runs[0] ? new Date(runs[0].run_started_at) : null;
+  const lastText = last ? `Last run ${ago(last)}.` : "";
+
+  if (state.failing_since)
+    return setHealth("critical", "Failing", `Checks have failed since ${fmtFound(new Date(state.failing_since))}.`);
+  if (runs === null)
+    return setHealth("warning", "Unknown", "Couldn't read the run history from GitHub.");
+  if (!last)
+    return setHealth("warning", "No runs yet", "The watcher hasn't run.");
+  if (!watching)
+    return setHealth("paused", "Paused overnight", `${hoursText} ${lastText}`);
+  if (Date.now() - last > STALE_MINUTES * 6e4)
+    return setHealth("warning", "Delayed", `${lastText} Expected every 5 minutes.`);
+  if (runs[0].conclusion === "failure")
+    return setHealth("warning", "Last run failed", lastText);
+  setHealth("good", "Watching", `${lastText} ${hoursText}`);
+}
+
+function renderHero(state) {
+  const slots = [...(state.open_slots || [])].sort(), name = (state.location || {}).name || "";
+  $("title").textContent = name ? `${name} Global Entry watch` : "Global Entry watch";
+  document.title = $("title").textContent;
+  $("hero-value").textContent = !slots.length ? "No openings right now"
+    : slots.length >= 10 ? "10+ openings" : plural(slots.length, "opening");
+  $("hero-note").textContent = state.before_date ? `Only counting appointments on or before ${state.before_date}.` : "";
+  $("hero-slots").replaceChildren(...slots.map(s => Object.assign(document.createElement("li"), { textContent: fmtSlot(s) })));
+  $("book").hidden = !slots.length;
+}
+
+function renderStats(list) {
+  $("seen").textContent = list.length;
+  $("seen-note").textContent = list.length ? `Since ${fmtFound(list[0].found).replace(/,[^,]*$/, "")}` : "None recorded yet";
+  const lasted = list.filter(o => o.closed).map(o => o.closed - o.found).sort((a, b) => a - b);
+  if (lasted.length) {
+    const mid = lasted.length >> 1;
+    $("lasted").textContent = duration(lasted.length % 2 ? lasted[mid] : (lasted[mid - 1] + lasted[mid]) / 2);
+    $("lasted-note").textContent = `Median of ${plural(lasted.length, "slot")}, to the nearest check`;
+  } else {
+    $("lasted").textContent = "–";
+    $("lasted-note").textContent = "Needs at least one slot to open and close";
+  }
+}
+
+const tip = $("tip");
+function showTip(text, evt) {
+  tip.textContent = text; tip.style.display = "block";
+  const w = tip.offsetWidth;
+  tip.style.left = Math.max(8, Math.min(evt.clientX - w / 2, innerWidth - w - 8)) + "px";
+  tip.style.top = (evt.clientY - 40) + "px";
+}
+const hideTip = () => { tip.style.display = "none"; };
+
+// Column chart: bars = [{label, tick, value, tip, shaded}]
+function columns(host, bars, description) {
+  if (!bars.some(b => b.value)) {
+    host.innerHTML = '<p class="empty">Nothing recorded yet. This fills in as the watcher sees openings.</p>';
+    return;
+  }
+  const W = host.clientWidth || 320, H = 190, left = 28, right = 4, top = 10, bottom = 24;
+  const plotW = W - left - right, plotH = H - top - bottom, band = plotW / bars.length;
+  const max = Math.max(...bars.map(b => b.value));
+  const step = Math.max(1, Math.ceil(max / 4)), yMax = Math.ceil(max / step) * step;
+  const y = v => top + plotH - (v / yMax) * plotH;
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, height: H, role: "img", "aria-label": description });
+
+  bars.forEach((b, i) => { if (b.shaded) svg.append(el("rect", { x: left + i * band, y: top, width: band, height: plotH, fill: "var(--unwatched)" })); });
+  for (let v = 0; v <= yMax; v += step) {
+    svg.append(el("line", { x1: left, x2: W - right, y1: y(v), y2: y(v), stroke: v ? "var(--grid)" : "var(--axis)", "stroke-width": 1 }));
+    svg.append(el("text", { x: left - 6, y: y(v) + 4, "text-anchor": "end" }, v));
+  }
+  const barW = Math.min(24, Math.max(2, band - 4));
+  bars.forEach((b, i) => {
+    const cx = left + i * band + band / 2;
+    if (b.value) {
+      const h = Math.max(2, top + plotH - y(b.value)), r = Math.min(4, barW / 2, h), x = cx - barW / 2, y0 = top + plotH;
+      svg.append(el("path", { fill: "var(--series)", d:
+        `M${x},${y0}V${y0 - h + r}a${r},${r} 0 0 1 ${r},${-r}h${barW - 2 * r}a${r},${r} 0 0 1 ${r},${r}V${y0}Z` }));
+    }
+    if (b.tick) svg.append(el("text", { x: cx, y: H - 6, "text-anchor": "middle" }, b.tick));
+    const hit = el("rect", { x: left + i * band, y: top, width: band, height: plotH, fill: "transparent", tabindex: 0 });
+    hit.addEventListener("pointermove", e => showTip(b.tip, e));
+    hit.addEventListener("pointerleave", hideTip);
+    svg.append(hit);
+  });
+  host.replaceChildren(svg);
+}
+
+let lastData = null;
+function renderCharts() {
+  if (!lastData) return;
+  const { state, list } = lastData, hours = state.watch_hours;
+  const byHour = Array(24).fill(0), byDay = {};
+  const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  for (const o of list) {
+    const p = localParts(o.found);
+    byHour[p.hour]++; byDay[p.weekday] = (byDay[p.weekday] || 0) + 1;
+  }
+  const narrow = ($("by-hour").clientWidth || 320) < 420;
+  columns($("by-hour"), byHour.map((value, h) => ({
+    value, tick: h % (narrow ? 6 : 3) === 0 ? hourLabel(h) : "",
+    tip: `${hourLabel(h)}–${hourLabel((h + 1) % 24)}: ${plural(value, "opening")}`,
+    shaded: hours && (h < hours[0] || h >= hours[1]),
+  })), "Openings first seen in each hour of the day");
+  const anyData = byHour.some(Boolean);
+  $("hour-key").hidden = !(hours && anyData);
+  if (hours) $("hour-key-text").textContent = `Not watched (${hourLabel(hours[1])}–${hourLabel(hours[0])})`;
+  columns($("by-day"), days.map(d => ({ value: byDay[d] || 0, tick: d,
+    tip: `${d}: ${plural(byDay[d] || 0, "opening")}` })), "Openings first seen on each day of the week");
+}
+
+function renderTable(list) {
+  if (!list.length) {
+    $("recent").innerHTML = '<p class="empty">No openings recorded yet.</p>';
+    return;
+  }
+  const table = document.createElement("table");
+  table.innerHTML = "<thead><tr><th>Found</th><th>Appointment</th><th>Notice</th><th>Stayed open</th></tr></thead>";
+  const body = table.createTBody();
+  for (const o of list.slice(-25).reverse()) {
+    const days = slotDayNumber(o.slot) - localParts(o.found).dayNumber;
+    const cells = [fmtFound(o.found), fmtSlot(o.slot),
+      days <= 0 ? "Same day" : plural(days, "day"),
+      o.closed ? duration(o.closed - o.found) : "Still open"];
+    const row = body.insertRow();
+    for (const c of cells) row.insertCell().textContent = c;
+  }
+  $("recent").replaceChildren(table);
+}
+
+async function refresh() {
+  try {
+    const { state, history, runs } = await load();
+    TZ = (state.location || {}).timezone || TZ;
+    const list = openings(history);
+    lastData = { state, list };
+    renderHero(state); renderHealth(state, runs); renderStats(list); renderCharts(); renderTable(list);
+    $("updated").textContent = `Updated ${new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
+    $("foot").textContent = `Times shown in ${TZ.replace(/_/g, " ")}. Data can lag a few minutes. `;
+  } catch (err) {
+    console.error(err);
+    $("updated").textContent = "Couldn't load the latest data. Retrying shortly.";
+  }
+}
+$("repo-link").href = REPO_URL;
+$("runs-link").href = REPO_URL + "/actions";
+addEventListener("resize", renderCharts);
+refresh();
+setInterval(refresh, REFRESH_MINUTES * 6e4);
+</script>
+</body>
+</html>

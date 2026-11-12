@@ -17,6 +17,25 @@ hours, edit the schedule and the first step in `.github/workflows/check.yml`.
 3. Go to **Actions > Check Global Entry appointments > Run workflow**, tick
    **Send a test notification**, and run it. Your phone should buzz.
 
+## Dashboard
+
+A read-only status page lives in `docs/index.html`. It shows current openings,
+whether the watcher is running, and charts of when openings have appeared.
+
+To publish it, go to **Settings > Pages**, choose **Deploy from a branch**,
+select `main` and the `/docs` folder, and save. After a minute or two it is
+served at `https://<your-username>.github.io/<repository-name>/`.
+
+The page is public, like the repository. It reads `state.json`, `history.jsonl`
+and the public run history when you open it, so it can lag by a few minutes.
+
+To preview it locally, run this from the repository root and open
+<http://localhost:8000/docs/>:
+
+```bash
+python3 -m http.server
+```
+
 ## Settings
 
 Optional. Add these under **Settings > Secrets and variables > Actions >
@@ -27,6 +46,7 @@ Variables**; anything left unset uses the default.
 | `LOCATION_ID`   | `12161`           | Enrollment center to watch (12161 is Boise).             |
 | `LOCATION_NAME` | `Boise`           | Name used in the notifications.                          |
 | `BEFORE_DATE`   | none              | Only alert for slots on or before this date (`2027-01-15`). |
+| `LOCATION_TZ`   | `America/Denver`  | Time zone of the center, used for watch hours and the dashboard. |
 | `NTFY_SERVER`   | `https://ntfy.sh` | Use a self-hosted ntfy server instead.                   |
 
 Location IDs are listed at
@@ -46,7 +66,8 @@ Location IDs are listed at
 `check.py` asks the CBP scheduler API for the soonest open slots and compares
 them with the ones recorded in `state.json`. The workflow commits `state.json`
 back to the repository whenever it changes, which is how the watcher remembers
-what it has already told you. The weekly heartbeat also updates that file; the
+what it has already told you. Each slot that opens or closes is also appended
+to `history.jsonl`, which feeds the dashboard's charts. The weekly heartbeat also updates that file; the
 commit keeps GitHub from disabling the schedule, which it does to repositories
 with no activity for 60 days.
 

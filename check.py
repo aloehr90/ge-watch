@@ -19,6 +19,11 @@ LOCATION_ID = os.environ.get("LOCATION_ID") or "12161"  # Boise Enrollment Cente
 LOCATION_NAME = os.environ.get("LOCATION_NAME") or "Boise"
 # e.g. "2027-01-15" to only alert for slots on/before that date
 BEFORE_DATE = os.environ.get("BEFORE_DATE") or ""
+# Time zone of the center; the dashboard shows times in it
+LOCATION_TZ = os.environ.get("LOCATION_TZ") or "America/Denver"
+# Hours of the day (in that time zone) the schedule runs; shown on the dashboard
+WATCH_START = os.environ.get("WATCH_START") or ""
+WATCH_END = os.environ.get("WATCH_END") or ""
 NTFY_TOPIC = os.environ.get("NTFY_TOPIC") or ""
 NTFY_SERVER = (os.environ.get("NTFY_SERVER") or "https://ntfy.sh").rstrip("/")
 TEST_MODE = os.environ.get("TEST_MODE", "false") == "true"
@@ -27,6 +32,8 @@ TEST_MODE = os.environ.get("TEST_MODE", "false") == "true"
 API = "https://ttp.cbp.dhs.gov/schedulerapi"
 BOOKING_URL = "https://ttp.cbp.dhs.gov/"
 STATE_FILE = "state.json"
+HISTORY_FILE = "history.jsonl"               # one line per slot opening or closing
+HISTORY_MAX_LINES = 5000
 SLOT_LIMIT = 10                              # how many upcoming slots to look at
 SLOTS_IN_MESSAGE = 5                         # how many of them to list in the alert
 FETCH_ATTEMPTS = 3                           # tries per run before giving up
@@ -97,6 +104,22 @@ def save_state(state):
         f.write("\n")
 
 
+def record_history(opened, closed):
+    """Append what changed since the last check; the dashboard charts this."""
+    if not (opened or closed):
+        return
+    at = now().isoformat(timespec="seconds")
+    try:
+        with open(HISTORY_FILE) as f:
+            lines = f.read().splitlines()
+    except OSError:
+        lines = []
+    lines += [json.dumps({"at": at, "event": "closed", "slot": s}) for s in closed]
+    lines += [json.dumps({"at": at, "event": "opened", "slot": s}) for s in opened]
+    with open(HISTORY_FILE, "w") as f:
+        f.write("\n".join(lines[-HISTORY_MAX_LINES:]) + "\n")
+
+
 def record_failure(state, error):
     """Remember when checks started failing; alert once if it goes on too long."""
     since = state.setdefault("failing_since", now().isoformat(timespec="seconds"))
@@ -149,7 +172,18 @@ def main():
         notify(f"Global Entry: {LOCATION_NAME} opening", opening_message(slots))
     else:
         print(f"Still open: {', '.join(slots)} (already notified).")
+    record_history(opened=[s for s in slots if s not in seen],
+                   closed=[s for s in seen if s not in slots])
     state["open_slots"] = slots
+
+    # Settings the dashboard needs in order to describe what is being watched.
+    state["location"] = {"id": LOCATION_ID, "name": LOCATION_NAME, "timezone": LOCATION_TZ}
+    if WATCH_START and WATCH_END:
+        state["watch_hours"] = [int(WATCH_START), int(WATCH_END)]
+    if BEFORE_DATE:
+        state["before_date"] = BEFORE_DATE
+    else:
+        state.pop("before_date", None)
 
     # Weekly heartbeat: shows the watcher is alive, and the resulting commit keeps
     # GitHub from disabling the schedule after 60 days without repository activity.
