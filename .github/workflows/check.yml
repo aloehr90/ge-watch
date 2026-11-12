@@ -3,7 +3,7 @@ name: Check Global Entry appointments
 
 on:
   schedule:
-    - cron: "0 * * * *"    # every hour on the hour (times are UTC)
+    - cron: "5 * * * *"    # every hour at 5 past (times are UTC)
   workflow_dispatch:         # adds a "Run workflow" button for manual runs
     inputs:
       test:
