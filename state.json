@@ -1,6 +1,13 @@
 {
-  "open_slots": [
-    "2026-11-13T14:30"
-  ],
-  "heartbeat": "2026-11-12T22:53:10+00:00"
+  "open_slots": [],
+  "heartbeat": "2026-11-12T22:53:10+00:00",
+  "location": {
+    "id": "12161",
+    "name": "Boise",
+    "timezone": "America/Denver"
+  },
+  "watch_hours": [
+    5,
+    23
+  ]
 }
