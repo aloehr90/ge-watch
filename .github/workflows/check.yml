@@ -3,7 +3,8 @@ name: Check Global Entry appointments
 on:
   schedule:
     # Every 5 minutes, 5 AM-11 PM Mountain time. Cron is in UTC and ignores
-    # daylight saving, so this covers both offsets and the first step trims it.
+    # daylight saving, so this covers both offsets and the first step trims it
+    # to WATCH_START-WATCH_END below. Change both together.
     - cron: "2-59/5 0-5,11-23 * * *"
   workflow_dispatch:           # adds a "Run workflow" button for manual runs
     inputs:
@@ -14,6 +15,11 @@ on:
 
 permissions:
   contents: write              # lets the job save state.json back to the repo
+
+env:
+  WATCH_START: 5               # first hour of the day to check (center's time)
+  WATCH_END: 23                # hour to stop at
+  LOCATION_TZ: ${{ vars.LOCATION_TZ || 'America/Denver' }}
 
 concurrency:
   group: ge-watch              # one check at a time, so state.json never races
@@ -28,9 +34,9 @@ jobs:
         id: hours
         if: github.event_name == 'schedule'
         run: |
-          hour=$((10#$(TZ=America/Denver date +%H)))
-          if [ "$hour" -lt 5 ] || [ "$hour" -ge 23 ]; then
-            echo "Outside 5 AM-11 PM Mountain time; skipping."
+          hour=$((10#$(TZ="$LOCATION_TZ" date +%H)))
+          if [ "$hour" -lt "$WATCH_START" ] || [ "$hour" -ge "$WATCH_END" ]; then
+            echo "Outside watch hours ($WATCH_START:00-$WATCH_END:00 $LOCATION_TZ); skipping."
             echo "skip=true" >> "$GITHUB_OUTPUT"
           fi
 
@@ -53,12 +59,12 @@ jobs:
         # also runs after a failed check, to record the failure
         if: ${{ !cancelled() && steps.hours.outputs.skip != 'true' }}
         run: |
-          if [ -z "$(git status --porcelain state.json)" ]; then
+          if [ -z "$(git status --porcelain state.json history.jsonl)" ]; then
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898308+github-actions[bot]@users.noreply.github.com"
-          git add state.json
+          git add state.json history.jsonl
           git commit -m "Update appointment state"
           for attempt in 1 2 3; do
             if git pull --rebase && git push; then
