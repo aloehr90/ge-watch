@@ -2,12 +2,18 @@ name: Check Global Entry appointments
 
 on:
   schedule:
-    # Every 5 minutes, 5 AM-11 PM Mountain time. Cron is in UTC and ignores
-    # daylight saving, so this covers both offsets and the first step trims it
-    # to WATCH_START-WATCH_END below. Change both together.
-    - cron: "2-59/5 0-5,11-23 * * *"
-  workflow_dispatch:           # adds a "Run workflow" button for manual runs
+    # Hourly backup, 5 AM-11 PM Mountain time. GitHub runs schedules too
+    # irregularly for 5-minute checks, so an external timer starts the workflow
+    # every 5 minutes instead (see README). Cron is in UTC and ignores daylight
+    # saving, so this covers both offsets and the first step trims it to
+    # WATCH_START-WATCH_END below. Change both together.
+    - cron: "32 0-5,11-23 * * *"
+  workflow_dispatch:           # the "Run workflow" button, and the external timer
     inputs:
+      timer:
+        description: "Started by the external timer (skips runs outside watch hours)"
+        type: boolean
+        default: false
       test:
         description: "Send a test notification"
         type: boolean
@@ -30,9 +36,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Skip scheduled runs outside watch hours
+      - name: Skip automatic runs outside watch hours
         id: hours
-        if: github.event_name == 'schedule'
+        if: github.event_name == 'schedule' || inputs.timer
         run: |
           hour=$((10#$(TZ="$LOCATION_TZ" date +%H)))
           if [ "$hour" -lt "$WATCH_START" ] || [ "$hour" -ge "$WATCH_END" ]; then

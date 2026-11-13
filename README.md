@@ -3,9 +3,11 @@
 Watches a Global Entry enrollment center (Boise by default) for open interview
 slots and sends a push notification to your phone when a new one appears.
 
-It runs on GitHub Actions every 5 minutes between 5 AM and 11 PM Mountain
-time, so there is nothing to host. Manual runs work at any hour. To change the
-hours, edit the schedule and the first step in `.github/workflows/check.yml`.
+It runs on GitHub Actions between 5 AM and 11 PM Mountain time, so there is
+nothing to host. An external timer starts a check every 5 minutes (see
+[Timer](#timer)); GitHub's own schedule runs hourly as a backup. Manual runs
+work at any hour. To change the hours, edit `WATCH_START`, `WATCH_END` and the
+schedule in `.github/workflows/check.yml`.
 
 ## Setup
 
@@ -16,6 +18,34 @@ hours, edit the schedule and the first step in `.github/workflows/check.yml`.
    add a secret named `NTFY_TOPIC` with that topic name.
 3. Go to **Actions > Check Global Entry appointments > Run workflow**, tick
    **Send a test notification**, and run it. Your phone should buzz.
+
+## Timer
+
+GitHub runs scheduled workflows on a best-effort basis, often only about once
+an hour, which is too slow to catch cancellations. A free external timer such
+as [cron-job.org](https://cron-job.org) starts the workflow instead.
+
+1. Create a GitHub token: **Settings > Developer settings > Personal access
+   tokens > Fine-grained tokens > Generate new token**. Under **Repository
+   access** choose **Only select repositories** and pick this one. Under
+   **Permissions > Repository permissions** set **Actions** to **Read and
+   write**. Grant nothing else. Note the expiry date; the timer stops working
+   when the token expires.
+2. In the timer service, create a job that runs every 5 minutes and sends:
+
+   | Field   | Value |
+   | ------- | ----- |
+   | URL     | `https://api.github.com/repos/<your-username>/<repository-name>/actions/workflows/check.yml/dispatches` |
+   | Method  | `POST` |
+   | Header  | `Authorization: Bearer <your token>` |
+   | Header  | `Accept: application/vnd.github+json` |
+   | Header  | `Content-Type: application/json` |
+   | Body    | `{"ref":"main","inputs":{"timer":"true"}}` |
+
+   GitHub answers `204 No Content` when the run is accepted.
+
+Runs started this way skip themselves outside the watch hours, so the timer can
+run around the clock, though limiting it to the watch hours saves requests.
 
 ## Dashboard
 
