@@ -119,7 +119,8 @@ let OWNER = "aloehr90", REPO = "ge-watch", BRANCH = "main";
 const pages = location.hostname.match(/^(.+)\.github\.io$/);
 if (pages) { OWNER = pages[1]; REPO = location.pathname.split("/")[1] || REPO; }
 const DATA = pages ? `https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}/` : "../";
-const RUNS = `https://api.github.com/repos/${OWNER}/${REPO}/actions/runs?per_page=5`;
+// Only the watcher's own runs; once Pages is on, GitHub adds its own site-build runs to the repository.
+const RUNS = `https://api.github.com/repos/${OWNER}/${REPO}/actions/workflows/check.yml/runs?per_page=5`;
 const REPO_URL = `https://github.com/${OWNER}/${REPO}`;
 const STALE_MINUTES = 30;   // a watcher that hasn't run for this long is flagged
 const REFRESH_MINUTES = 5;
