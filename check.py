@@ -180,6 +180,10 @@ def main():
     state["location"] = {"id": LOCATION_ID, "name": LOCATION_NAME, "timezone": LOCATION_TZ}
     if WATCH_START and WATCH_END:
         state["watch_hours"] = [int(WATCH_START), int(WATCH_END)]
+    if NTFY_SERVER != "https://ntfy.sh":
+        state["ntfy_server"] = NTFY_SERVER  # so the dashboard's test button uses it too
+    else:
+        state.pop("ntfy_server", None)
     if BEFORE_DATE:
         state["before_date"] = BEFORE_DATE
     else:

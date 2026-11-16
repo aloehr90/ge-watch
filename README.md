@@ -56,6 +56,11 @@ To publish it, go to **Settings > Pages**, choose **Deploy from a branch**,
 select `main` and the `/docs` folder, and save. After a minute or two it is
 served at `https://<your-username>.github.io/<repository-name>/`.
 
+It also has a **Send a test notification** panel for checking what reaches
+your phone and watch at each ntfy priority. It sends straight from your browser
+to ntfy; you enter your topic once and it is kept only in that browser, never in
+the page or the repository.
+
 The page is public, like the repository. It reads `state.json`, `history.jsonl`
 and the public run history when you open it, so it can lag by a few minutes.
 
