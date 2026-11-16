@@ -62,6 +62,19 @@
   footer { color: var(--text-2); font-size: 13px; margin-top: 24px; }
   a { color: inherit; }
   section { margin-top: 16px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
+  input, select, button { font: inherit; font-size: 15px; color: var(--text); background: var(--page);
+    border: 1px solid var(--axis); border-radius: 8px; padding: 8px 10px; min-height: 40px; }
+  input { flex: 1 1 200px; min-width: 0; }
+  select { flex: 1 1 220px; min-width: 0; }
+  button { cursor: pointer; }
+  button.primary { background: var(--series); border-color: var(--series); color: #fff; font-weight: 600; padding: 8px 16px; }
+  button:disabled { opacity: 0.6; cursor: default; }
+  .linklike { border: 0; background: none; padding: 0; min-height: 0; color: var(--text-2); text-decoration: underline; font-size: 14px; }
+  #test-result { font-size: 14px; color: var(--text-2); margin: 12px 0 0; min-height: 1.45em; }
+  #test-result.ok::before { content: "✓ "; color: var(--good); font-weight: 700; }
+  #test-result.err::before { content: "✕ "; color: var(--critical); font-weight: 700; }
+  .fine { color: var(--text-2); font-size: 13px; margin: 12px 0 0; }
 </style>
 </head>
 <body>
@@ -102,6 +115,34 @@
     <h2>Recent openings</h2>
     <p class="sub">Newest first. Times are local to the enrollment center.</p>
     <div class="table-wrap" id="recent"></div>
+  </section>
+
+  <section class="card" id="test">
+    <h2>Send a test notification</h2>
+    <p class="sub">Sends straight from this browser to ntfy, so you can see what reaches your phone and watch at each priority. Your topic is saved only on this device.</p>
+    <form class="row" id="topic-form" hidden>
+      <input id="topic-input" type="password" autocomplete="off" autocapitalize="off" spellcheck="false"
+             placeholder="Your ntfy topic" aria-label="ntfy topic">
+      <button type="submit">Save topic</button>
+    </form>
+    <div id="topic-saved" hidden>
+      <p class="sub" style="margin-top:12px">Topic saved on this device, ending <strong id="topic-tail"></strong>.
+        <button class="linklike" id="topic-change" type="button">Change</button> ·
+        <button class="linklike" id="topic-forget" type="button">Forget</button></p>
+      <div class="row">
+        <select id="test-priority" aria-label="Priority">
+          <option value="4">High: like a real opening</option>
+          <option value="5">Urgent</option>
+          <option value="3">Default: like a failure alert</option>
+          <option value="2">Low</option>
+          <option value="1">Min: like the weekly check-in</option>
+        </select>
+        <button class="primary" id="test-send" type="button">Send test</button>
+      </div>
+    </div>
+    <p id="test-result" role="status"></p>
+    <p class="fine">This checks ntfy and your devices. To test the whole path through the watcher, using the topic stored in GitHub,
+      open <a id="workflow-link" href="#">the workflow</a>, choose Run workflow, and tick “Send a test notification”.</p>
   </section>
 
   <footer>
@@ -354,6 +395,75 @@ async function refresh() {
     $("updated").textContent = "Couldn't load the latest data. Retrying shortly.";
   }
 }
+// ---- test notifications -------------------------------------------------------
+// The topic is a secret, so it never goes in the page or the repository: the viewer
+// types it once and it stays in this browser's storage.
+const TOPIC_KEY = "ge-watch:ntfy-topic";
+const PRIORITY_NAMES = { 1: "min", 2: "low", 3: "default", 4: "high", 5: "urgent" };
+const store = {
+  get() { try { return localStorage.getItem(TOPIC_KEY) || ""; } catch { return ""; } },
+  set(v) { try { localStorage.setItem(TOPIC_KEY, v); return true; } catch { return false; } },
+  clear() { try { localStorage.removeItem(TOPIC_KEY); } catch {} },
+};
+let sessionTopic = "";   // used when the browser won't keep it (private browsing)
+const topic = () => store.get() || sessionTopic;
+function result(text, kind) {
+  $("test-result").textContent = text;
+  $("test-result").className = kind || "";
+}
+function showTopic(editing) {
+  const t = topic();
+  $("topic-form").hidden = !(editing || !t);
+  $("topic-saved").hidden = !$("topic-form").hidden;
+  $("topic-tail").textContent = t.length > 4 ? "…" + t.slice(-4) : t;
+  if (!$("topic-form").hidden) $("topic-input").value = "";
+}
+$("topic-form").addEventListener("submit", e => {
+  e.preventDefault();
+  // Accept a pasted subscription link as well as a bare topic name.
+  const value = $("topic-input").value.trim().replace(/^https?:\/\/[^/]+\//, "").replace(/[/?#].*$/, "");
+  if (!/^[-_A-Za-z0-9]{1,64}$/.test(value)) {
+    return result("That doesn't look like an ntfy topic: use letters, numbers, - and _ only.", "err");
+  }
+  sessionTopic = value;
+  result(store.set(value) ? "" : "This browser won't keep the topic, so you'll need to enter it again next visit.");
+  showTopic(false);
+});
+$("topic-change").addEventListener("click", () => { result(""); showTopic(true); $("topic-input").focus(); });
+$("topic-forget").addEventListener("click", () => {
+  store.clear(); sessionTopic = ""; result("Topic removed from this device."); showTopic(false);
+});
+$("test-send").addEventListener("click", async () => {
+  const priority = +$("test-priority").value, name = PRIORITY_NAMES[priority];
+  const server = ((lastData && lastData.state.ntfy_server) || "https://ntfy.sh").replace(/\/$/, "");
+  const where = (lastData && (lastData.state.location || {}).name) || "Global Entry";
+  const at = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" });
+  $("test-send").disabled = true;
+  result("Sending…");
+  try {
+    const r = await fetch(`${server}/${topic()}`, {
+      method: "POST",
+      body: `Test from the dashboard at ${at}, ${name} priority.`,
+      headers: { Title: `Global Entry: ${where} test (${name})`, Priority: String(priority),
+                 Tags: "test_tube", Click: "https://ttp.cbp.dhs.gov/" },
+    });
+    if (r.ok) {
+      result(`Sent at ${at} with ${name} priority. ntfy accepted it, so if it doesn't arrive, the problem is between ntfy and your device.`, "ok");
+    } else if (r.status === 429) {
+      result("ntfy turned this away because this network has sent too many messages today. Try again later or from another network.", "err");
+    } else {
+      const body = await r.json().catch(() => ({}));
+      result(`ntfy refused the message (${r.status}${body.error ? ": " + body.error : ""}).`, "err");
+    }
+  } catch {
+    result("Couldn't reach ntfy. Check your connection and try again.", "err");
+  } finally {
+    $("test-send").disabled = false;
+  }
+});
+showTopic(false);
+
+$("workflow-link").href = REPO_URL + "/actions/workflows/check.yml";
 $("repo-link").href = REPO_URL;
 $("runs-link").href = REPO_URL + "/actions";
 addEventListener("resize", renderCharts);
